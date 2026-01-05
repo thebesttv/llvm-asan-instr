@@ -12,14 +12,24 @@
 //===----------------------------------------------------------------------===//
 
 #include "asan_descriptions.h"
+
 #include "asan_mapping.h"
 #include "asan_report.h"
 #include "asan_stack.h"
 #include "sanitizer_common/sanitizer_stackdepot.h"
+#include "sanitizer_common/sanitizer_symbolizer.h"
 
 namespace __asan {
 
-AsanThreadIdAndName::AsanThreadIdAndName(AsanThreadContext *t) {
+// Helper to append top-level JSON header fields into provided
+// InternalScopedString.
+static void SetJsonHeader(InternalScopedString* str, u64 id, uptr addr,
+                          const char* type) {
+  str->AppendF("{\"id\":%llu,\"addr\":\"%p\",\"type\":\"%s\"",
+               (unsigned long long)id, (void*)addr, type);
+}
+
+AsanThreadIdAndName::AsanThreadIdAndName(AsanThreadContext* t) {
   if (!t) {
     internal_snprintf(name, sizeof(name), "T-1");
     return;
@@ -36,7 +46,7 @@ AsanThreadIdAndName::AsanThreadIdAndName(u32 tid)
   asanThreadRegistry().CheckLocked();
 }
 
-void DescribeThread(AsanThreadContext *context) {
+void DescribeThread(AsanThreadContext* context) {
   CHECK(context);
   asanThreadRegistry().CheckLocked();
   // No need to announce the main thread.
@@ -48,7 +58,7 @@ void DescribeThread(AsanThreadContext *context) {
   InternalScopedString str;
   str.AppendF("Thread %s", AsanThreadIdAndName(context).c_str());
 
-  AsanThreadContext *parent_context =
+  AsanThreadContext* parent_context =
       context->parent_tid == kInvalidTid
           ? nullptr
           : GetThreadContextByTidLocked(context->parent_tid);
@@ -70,7 +80,7 @@ void DescribeThread(AsanThreadContext *context) {
 }
 
 // Shadow descriptions
-static bool GetShadowKind(uptr addr, ShadowKind *shadow_kind) {
+static bool GetShadowKind(uptr addr, ShadowKind* shadow_kind) {
   CHECK(!AddrIsInMem(addr));
   if (AddrIsInShadowGap(addr)) {
     *shadow_kind = kShadowKindGap;
@@ -86,23 +96,27 @@ static bool GetShadowKind(uptr addr, ShadowKind *shadow_kind) {
 
 bool DescribeAddressIfShadow(uptr addr) {
   ShadowAddressDescription descr;
-  if (!GetShadowAddressInformation(addr, &descr)) return false;
+  if (!GetShadowAddressInformation(addr, &descr))
+    return false;
   descr.Print();
   return true;
 }
 
-bool GetShadowAddressInformation(uptr addr, ShadowAddressDescription *descr) {
-  if (AddrIsInMem(addr)) return false;
+bool GetShadowAddressInformation(uptr addr, ShadowAddressDescription* descr) {
+  if (AddrIsInMem(addr))
+    return false;
   ShadowKind shadow_kind;
-  if (!GetShadowKind(addr, &shadow_kind)) return false;
-  if (shadow_kind != kShadowKindGap) descr->shadow_byte = *(u8 *)addr;
+  if (!GetShadowKind(addr, &shadow_kind))
+    return false;
+  if (shadow_kind != kShadowKindGap)
+    descr->shadow_byte = *(u8*)addr;
   descr->addr = addr;
   descr->kind = shadow_kind;
   return true;
 }
 
 // Heap descriptions
-static void GetAccessToHeapChunkInformation(ChunkAccess *descr,
+static void GetAccessToHeapChunkInformation(ChunkAccess* descr,
                                             AsanChunkView chunk, uptr addr,
                                             uptr access_size) {
   descr->bad_addr = addr;
@@ -125,37 +139,37 @@ static void GetAccessToHeapChunkInformation(ChunkAccess *descr,
   descr->alloc_type = chunk.GetAllocType();
 }
 
-static void PrintHeapChunkAccess(uptr addr, const ChunkAccess &descr) {
+static void PrintHeapChunkAccess(uptr addr, const ChunkAccess& descr) {
   Decorator d;
   InternalScopedString str;
   str.Append(d.Location());
   switch (descr.access_type) {
     case kAccessTypeLeft:
-      str.AppendF("%p is located %zd bytes before", (void *)descr.bad_addr,
+      str.AppendF("%p is located %zd bytes before", (void*)descr.bad_addr,
                   descr.offset);
       break;
     case kAccessTypeRight:
-      str.AppendF("%p is located %zd bytes after", (void *)descr.bad_addr,
+      str.AppendF("%p is located %zd bytes after", (void*)descr.bad_addr,
                   descr.offset);
       break;
     case kAccessTypeInside:
-      str.AppendF("%p is located %zd bytes inside of", (void *)descr.bad_addr,
+      str.AppendF("%p is located %zd bytes inside of", (void*)descr.bad_addr,
                   descr.offset);
       break;
     case kAccessTypeUnknown:
       str.AppendF(
           "%p is located somewhere around (this is AddressSanitizer bug!)",
-          (void *)descr.bad_addr);
+          (void*)descr.bad_addr);
   }
   str.AppendF(" %zu-byte region [%p,%p)\n", descr.chunk_size,
-              (void *)descr.chunk_begin,
-              (void *)(descr.chunk_begin + descr.chunk_size));
+              (void*)descr.chunk_begin,
+              (void*)(descr.chunk_begin + descr.chunk_size));
   str.Append(d.Default());
   Printf("%s", str.data());
 }
 
 bool GetHeapAddressInformation(uptr addr, uptr access_size,
-                               HeapAddressDescription *descr) {
+                               HeapAddressDescription* descr) {
   AsanChunkView chunk = FindHeapChunkByAddress(addr);
   if (!chunk.IsValid()) {
     return false;
@@ -193,9 +207,10 @@ bool DescribeAddressIfHeap(uptr addr, uptr access_size) {
 
 // Stack descriptions
 bool GetStackAddressInformation(uptr addr, uptr access_size,
-                                StackAddressDescription *descr) {
-  AsanThread *t = FindThreadByStackAddress(addr);
-  if (!t) return false;
+                                StackAddressDescription* descr) {
+  AsanThread* t = FindThreadByStackAddress(addr);
+  if (!t)
+    return false;
 
   descr->addr = addr;
   descr->tid = t->tid();
@@ -215,19 +230,19 @@ bool GetStackAddressInformation(uptr addr, uptr access_size,
   // On PowerPC64 ELFv1 or AIX, the address of a function actually points to a
   // three-doubleword (or three-word for 32-bit AIX) data structure with
   // the first field containing the address of the function's code.
-  descr->frame_pc = *reinterpret_cast<uptr *>(descr->frame_pc);
+  descr->frame_pc = *reinterpret_cast<uptr*>(descr->frame_pc);
 #endif
   descr->frame_pc += 16;
 
   return true;
 }
 
-static void PrintAccessAndVarIntersection(const StackVarDescr &var, uptr addr,
+static void PrintAccessAndVarIntersection(const StackVarDescr& var, uptr addr,
                                           uptr access_size, uptr prev_var_end,
                                           uptr next_var_beg) {
   uptr var_end = var.beg + var.size;
   uptr addr_end = addr + access_size;
-  const char *pos_descr = nullptr;
+  const char* pos_descr = nullptr;
   // If the variable [var.beg, var_end) is the nearest variable to the
   // current memory access, indicate it in the log.
   if (addr >= var.beg) {
@@ -269,39 +284,40 @@ static void PrintAccessAndVarIntersection(const StackVarDescr &var, uptr addr,
 
 bool DescribeAddressIfStack(uptr addr, uptr access_size) {
   StackAddressDescription descr;
-  if (!GetStackAddressInformation(addr, access_size, &descr)) return false;
+  if (!GetStackAddressInformation(addr, access_size, &descr))
+    return false;
   descr.Print();
   return true;
 }
 
 // Global descriptions
 static void DescribeAddressRelativeToGlobal(uptr addr, uptr access_size,
-                                            const __asan_global &g) {
+                                            const __asan_global& g) {
   InternalScopedString str;
   Decorator d;
   str.Append(d.Location());
   if (addr < g.beg) {
-    str.AppendF("%p is located %zd bytes before", (void *)addr, g.beg - addr);
+    str.AppendF("%p is located %zd bytes before", (void*)addr, g.beg - addr);
   } else if (addr + access_size > g.beg + g.size) {
-    if (addr < g.beg + g.size) addr = g.beg + g.size;
-    str.AppendF("%p is located %zd bytes after", (void *)addr,
+    if (addr < g.beg + g.size)
+      addr = g.beg + g.size;
+    str.AppendF("%p is located %zd bytes after", (void*)addr,
                 addr - (g.beg + g.size));
   } else {
     // Can it happen?
-    str.AppendF("%p is located %zd bytes inside of", (void *)addr,
-                addr - g.beg);
+    str.AppendF("%p is located %zd bytes inside of", (void*)addr, addr - g.beg);
   }
   str.AppendF(" global variable '%s' defined in '",
               MaybeDemangleGlobalName(g.name));
   PrintGlobalLocation(&str, g, /*print_module_name=*/false);
-  str.AppendF("' (%p) of size %zu\n", (void *)g.beg, g.size);
+  str.AppendF("' (%p) of size %zu\n", (void*)g.beg, g.size);
   str.Append(d.Default());
   PrintGlobalNameIfASCII(&str, g);
   Printf("%s", str.data());
 }
 
 bool GetGlobalAddressInformation(uptr addr, uptr access_size,
-                                 GlobalAddressDescription *descr) {
+                                 GlobalAddressDescription* descr) {
   descr->addr = addr;
   int globals_num = GetGlobalsForAddress(addr, descr->globals, descr->reg_sites,
                                          ARRAY_SIZE(descr->globals));
@@ -311,25 +327,48 @@ bool GetGlobalAddressInformation(uptr addr, uptr access_size,
 }
 
 bool DescribeAddressIfGlobal(uptr addr, uptr access_size,
-                             const char *bug_type) {
+                             const char* bug_type) {
   GlobalAddressDescription descr;
-  if (!GetGlobalAddressInformation(addr, access_size, &descr)) return false;
+  if (!GetGlobalAddressInformation(addr, access_size, &descr))
+    return false;
 
   descr.Print(bug_type);
   return true;
 }
 
 void ShadowAddressDescription::Print() const {
-  Printf("Address %p is located in the %s area.\n", (void *)addr,
+  Printf("Address %p is located in the %s area.\n", (void*)addr,
          ShadowNames[kind]);
 }
 
 void ShadowAddressDescription::PrintJSON(u64 id) const {
-  // TODO: implement JSON output. Placeholder for now.
-  (void)id;
+  InternalScopedString str;
+  const char* kind_str = "unknown";
+  switch (kind) {
+    case kShadowKindLow:
+      kind_str = "low";
+      break;
+    case kShadowKindGap:
+      kind_str = "gap";
+      break;
+    case kShadowKindHigh:
+      kind_str = "high";
+      break;
+  }
+
+  // Top-level header
+  SetJsonHeader(&str, id, addr, "shadow");
+  str.AppendF(",\"shadow_kind\":\"%s\"", kind_str);
+
+  // shadow_byte is meaningful only for non-gap shadow regions.
+  if (kind != kShadowKindGap)
+    str.AppendF(",\"shadow_byte\":\"0x%02x\"", shadow_byte);
+
+  str.AppendF("}");
+  Printf("%s\n", str.data());
 }
 
-void GlobalAddressDescription::Print(const char *bug_type) const {
+void GlobalAddressDescription::Print(const char* bug_type) const {
   for (int i = 0; i < size; i++) {
     DescribeAddressRelativeToGlobal(addr, access_size, globals[i]);
     if (bug_type &&
@@ -342,22 +381,67 @@ void GlobalAddressDescription::Print(const char *bug_type) const {
 }
 
 void GlobalAddressDescription::PrintJSON(u64 id, const char* bug_type) const {
-  // TODO: implement JSON output. Placeholder for now.
-  (void)id;
-  (void)bug_type;
+  InternalScopedString str;
+
+  // Top-level fields: id, addr (the queried address), type and globals array
+  // start.
+  SetJsonHeader(&str, id, addr, "global");
+  // Start globals array.
+  str.AppendF(",\"globals\":[");
+
+  for (int i = 0; i < size; i++) {
+    const __asan_global& g = globals[i];
+    if (i)
+      str.AppendF(",");
+
+    // Start of this global object
+    str.AppendF("{");
+
+    // name
+    str.AppendF("\"name\":\"%s\"", MaybeDemangleGlobalName(g.name));
+
+    // begin (address)
+    str.AppendF(",\"begin\":\"%p\"", (void*)g.beg);
+
+    // size
+    str.AppendF(",\"size\":%zu", g.size);
+
+    // Source/location info: prefer symbolizer (PrintGlobalLocation logic).
+    DataInfo info;
+    if (Symbolizer::GetOrInit()->SymbolizeData(g.beg, &info) &&
+        info.line != 0) {
+      if (info.file)
+        str.AppendF(",\"file\":\"%s\"", info.file);
+      str.AppendF(",\"line\":%d", (int)info.line);
+    } else if (g.gcc_location != 0) {
+      const __asan_global_source_location* loc = g.gcc_location;
+      if (loc->filename)
+        str.AppendF(",\"file\":\"%s\"", loc->filename);
+      if (loc->line_no)
+        str.AppendF(",\"line\":%d", loc->line_no);
+      if (loc->column_no)
+        str.AppendF(",\"column\":%d", loc->column_no);
+    }
+
+    // Close this global object
+    str.AppendF("}");
+  }
+
+  // Close globals array and top-level object.
+  str.AppendF("]}");
+  Printf("%s\n", str.data());
 }
 
 bool GlobalAddressDescription::PointsInsideTheSameVariable(
-    const GlobalAddressDescription &other) const {
-  if (size == 0 || other.size == 0) return false;
+    const GlobalAddressDescription& other) const {
+  if (size == 0 || other.size == 0)
+    return false;
 
   for (uptr i = 0; i < size; i++) {
-    const __asan_global &a = globals[i];
+    const __asan_global& a = globals[i];
     for (uptr j = 0; j < other.size; j++) {
-      const __asan_global &b = other.globals[j];
-      if (a.beg == b.beg &&
-          a.beg <= addr &&
-          b.beg <= other.addr &&
+      const __asan_global& b = other.globals[j];
+      if (a.beg == b.beg && a.beg <= addr && b.beg <= other.addr &&
           (addr + access_size) < (a.beg + a.size) &&
           (other.addr + other.access_size) < (b.beg + b.size))
         return true;
@@ -423,19 +507,33 @@ void StackAddressDescription::Print() const {
 }
 
 void StackAddressDescription::PrintJSON(u64 id) const {
-  // TODO: implement JSON output. Placeholder for now.
-  (void)id;
+  InternalScopedString str;
+
+  SetJsonHeader(&str, id, addr, "stack");
+
+  // Basic stack fields.
+  str.AppendF(",\"tid\":%zu", tid);
+  str.AppendF(",\"offset\":%zu", offset);
+  str.AppendF(",\"access_size\":%zu", access_size);
+
+  if (frame_descr) {
+    str.AppendF(",\"frame_pc\":\"%p\"", (void*)frame_pc);
+    str.AppendF(",\"frame_descr\":\"%s\"", frame_descr);
+  }
+
+  str.AppendF("}");
+  Printf("%s\n", str.data());
 }
 
 void HeapAddressDescription::Print() const {
   PrintHeapChunkAccess(addr, chunk_access);
 
   asanThreadRegistry().CheckLocked();
-  AsanThreadContext *alloc_thread = GetThreadContextByTidLocked(alloc_tid);
+  AsanThreadContext* alloc_thread = GetThreadContextByTidLocked(alloc_tid);
   StackTrace alloc_stack = GetStackTraceFromId(alloc_stack_id);
 
   Decorator d;
-  AsanThreadContext *free_thread = nullptr;
+  AsanThreadContext* free_thread = nullptr;
   if (free_tid != kInvalidTid) {
     free_thread = GetThreadContextByTidLocked(free_tid);
     Printf("%sfreed by thread %s here:%s\n", d.Allocation(),
@@ -450,13 +548,30 @@ void HeapAddressDescription::Print() const {
   }
   alloc_stack.Print();
   DescribeThread(GetCurrentThread());
-  if (free_thread) DescribeThread(free_thread);
+  if (free_thread)
+    DescribeThread(free_thread);
   DescribeThread(alloc_thread);
 }
 
 void HeapAddressDescription::PrintJSON(u64 id) const {
-  // TODO: implement JSON output. Placeholder for now.
-  (void)id;
+  InternalScopedString str;
+
+  SetJsonHeader(&str, id, addr, "heap");
+
+  // Heap allocation/free info.
+  str.AppendF(",\"chunk_begin\":\"%p\"", (void*)chunk_access.chunk_begin);
+  str.AppendF(",\"chunk_size\":%zu", chunk_access.chunk_size);
+  str.AppendF(",\"bad_addr\":\"%p\"", (void*)chunk_access.bad_addr);
+  str.AppendF(",\"access_type\":%d", (int)chunk_access.access_type);
+  str.AppendF(",\"alloc_tid\":%zu", alloc_tid);
+  str.AppendF(",\"alloc_stack_id\":%u", alloc_stack_id);
+  if (free_tid != kInvalidTid) {
+    str.AppendF(",\"free_tid\":%zu", free_tid);
+    str.AppendF(",\"free_stack_id\":%u", free_stack_id);
+  }
+
+  str.AppendF("}");
+  Printf("%s\n", str.data());
 }
 
 AddressDescription::AddressDescription(uptr addr, uptr access_size,
@@ -499,11 +614,13 @@ AddressDescription::AddressDescription(uptr addr, uptr access_size,
 
 void WildAddressDescription::Print() const {
   Printf("Address %p is a wild pointer inside of access range of size %p.\n",
-         (void *)addr, (void *)access_size);
+         (void*)addr, (void*)access_size);
 }
 
 void PrintAddressDescription(uptr addr, u64 id, uptr access_size,
                              const char* bug_type) {
+  Printf("ID: %llu\n", (unsigned long long)id);
+
   ShadowAddressDescription shadow_descr;
   if (GetShadowAddressInformation(addr, &shadow_descr)) {
     shadow_descr.Print();
