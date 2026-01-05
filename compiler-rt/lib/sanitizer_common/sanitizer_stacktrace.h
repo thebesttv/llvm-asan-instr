@@ -57,6 +57,9 @@ struct StackTrace {
   // Prints a symbolized stacktrace, followed by an empty line.
   void Print() const;
 
+  // Prints a symbolized stacktrace in JSON format.
+  void PrintJSON(InternalScopedString* output) const;
+
   // Prints a symbolized stacktrace to the output string, followed by an empty
   // line.
   void PrintTo(InternalScopedString *output) const;

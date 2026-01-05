@@ -78,6 +78,111 @@ class StackTraceTextPrinter {
   const bool symbolize_ = false;
 };
 
+class StackTraceJsonPrinter {
+ public:
+  StackTraceJsonPrinter(InternalScopedString* output)
+      : output_(output), symbolize_(true) {}
+
+  bool ProcessAddressFrames(uptr pc) {
+    SymbolizedStackHolder symbolized_stack(
+        symbolize_ ? Symbolizer::GetOrInit()->SymbolizePC(pc)
+                   : SymbolizedStack::New(pc));
+    const SymbolizedStack* frames = symbolized_stack.get();
+    if (!frames)
+      return false;
+
+    for (const SymbolizedStack* cur = frames; cur; cur = cur->next) {
+      // Add comma separator between frames
+      if (frame_num_ > 0)
+        output_->Append(",");
+
+      RenderJsonFrame(cur);
+      frame_num_++;
+    }
+    return true;
+  }
+
+ private:
+  void RenderJsonFrame(const SymbolizedStack* stack) {
+    output_->Append("{");
+
+    // Frame number
+    output_->AppendF("\"frame_no\":%zu", frame_num_);
+
+    // Address (always present)
+    output_->AppendF(",\"address\":\"%p\"", (void*)stack->info.address);
+
+    // Function name (if available)
+    if (symbolize_ && stack->info.function) {
+      output_->Append(",\"function\":\"");
+      AppendEscapedJson(stack->info.function);
+      output_->Append("\"");
+    }
+
+    // File name (if available)
+    if (symbolize_ && stack->info.file) {
+      output_->Append(",\"file\":\"");
+      AppendEscapedJson(stack->info.file);
+      output_->Append("\"");
+    }
+
+    // Line number (if available and valid)
+    if (symbolize_ && stack->info.line > 0) {
+      output_->AppendF(",\"line\":%d", stack->info.line);
+    }
+
+    // Column number (if available and valid)
+    if (symbolize_ && stack->info.column > 0) {
+      output_->AppendF(",\"column\":%d", stack->info.column);
+    }
+
+    output_->Append("}");
+  }
+
+  // Escape special characters for JSON strings
+  void AppendEscapedJson(const char* str) {
+    if (!str)
+      return;
+
+    for (const char* p = str; *p; p++) {
+      switch (*p) {
+        case '"':
+          output_->Append("\\\"");
+          break;
+        case '\\':
+          output_->Append("\\\\");
+          break;
+        case '\b':
+          output_->Append("\\b");
+          break;
+        case '\f':
+          output_->Append("\\f");
+          break;
+        case '\n':
+          output_->Append("\\n");
+          break;
+        case '\r':
+          output_->Append("\\r");
+          break;
+        case '\t':
+          output_->Append("\\t");
+          break;
+        default:
+          if ((unsigned char)*p < 0x20) {
+            output_->AppendF("\\u%04x", (unsigned char)*p);
+          } else {
+            output_->AppendF("%c", *p);
+          }
+          break;
+      }
+    }
+  }
+
+  uptr frame_num_ = 0;
+  InternalScopedString* output_;
+  const bool symbolize_ = false;
+};
+
 static void CopyStringToBuffer(const InternalScopedString &str, char *out_buf,
                                uptr out_buf_size) {
   if (!out_buf_size)
@@ -132,6 +237,28 @@ void StackTrace::Print() const {
   InternalScopedString output;
   PrintTo(&output);
   Printf("%s", output.data());
+}
+
+void StackTrace::PrintJSON(InternalScopedString* output) const {
+  CHECK(output);
+
+  StackTraceJsonPrinter printer(output);
+
+  output->Append("[");
+
+  if (trace == nullptr || size == 0) {
+    output->Append("]");
+    return;
+  }
+
+  for (uptr i = 0; i < size && trace[i]; i++) {
+    // PCs in stack traces are actually the return addresses, that is,
+    // addresses of the next instructions after the call.
+    uptr pc = GetPreviousInstructionPc(trace[i]);
+    CHECK(printer.ProcessAddressFrames(pc));
+  }
+
+  output->Append("]");
 }
 
 void BufferedStackTrace::Unwind(u32 max_depth, uptr pc, uptr bp, void *context,

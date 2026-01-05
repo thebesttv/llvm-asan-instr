@@ -518,7 +518,78 @@ void StackAddressDescription::PrintJSON(u64 id) const {
 
   if (frame_descr) {
     str.AppendF(",\"frame_pc\":\"%p\"", (void*)frame_pc);
-    str.AppendF(",\"frame_descr\":\"%s\"", frame_descr);
+
+    // Add alloca stack trace (the frame where the alloca happened)
+    StackTrace alloca_stack(&frame_pc, 1);
+    str.Append(",\"alloca_stack\":");
+    alloca_stack.PrintJSON(&str);
+
+    // Parse and add frame variables information
+    InternalMmapVector<StackVarDescr> vars;
+    vars.reserve(16);
+    if (ParseFrameDescription(frame_descr, &vars)) {
+      uptr n_objects = vars.size();
+      str.AppendF(",\"frame_vars_count\":%zu", n_objects);
+
+      // Add variables array
+      str.Append(",\"frame_vars\":[");
+      for (uptr i = 0; i < n_objects; i++) {
+        if (i > 0)
+          str.Append(",");
+
+        const StackVarDescr& var = vars[i];
+        str.Append("{");
+
+        // Variable address range
+        str.AppendF("\"beg\":%zu", var.beg);
+        str.AppendF(",\"end\":%zu", var.beg + var.size);
+        str.AppendF(",\"size\":%zu", var.size);
+
+        // Variable name
+        str.Append(",\"name\":\"");
+        for (uptr j = 0; j < var.name_len; ++j) {
+          char c = var.name_pos[j];
+          // Escape special characters
+          if (c == '"')
+            str.Append("\\\"");
+          else if (c == '\\')
+            str.Append("\\\\");
+          else if (c == '\n')
+            str.Append("\\n");
+          else if (c == '\r')
+            str.Append("\\r");
+          else if (c == '\t')
+            str.Append("\\t");
+          else
+            str.AppendF("%c", c);
+        }
+        str.Append("\"");
+
+        // Variable line number
+        if (var.line > 0)
+          str.AppendF(",\"line\":%zu", var.line);
+
+        // Check if access overlaps with this variable
+        uptr var_end = var.beg + var.size;
+        uptr addr_end = offset + access_size;
+        if (offset >= var.beg && addr_end <= var_end) {
+          str.Append(",\"access_type\":\"inside\"");
+        } else if (offset < var.beg && addr_end > var.beg &&
+                   addr_end <= var_end) {
+          str.Append(",\"access_type\":\"partial_underflow\"");
+        } else if (offset >= var.beg && offset < var_end &&
+                   addr_end > var_end) {
+          str.Append(",\"access_type\":\"partial_overflow\"");
+        } else if (addr_end <= var.beg) {
+          str.Append(",\"access_type\":\"underflow\"");
+        } else if (offset >= var_end) {
+          str.Append(",\"access_type\":\"overflow\"");
+        }
+
+        str.Append("}");
+      }
+      str.Append("]");
+    }
   }
 
   str.AppendF("}");
@@ -565,9 +636,20 @@ void HeapAddressDescription::PrintJSON(u64 id) const {
   str.AppendF(",\"access_type\":%d", (int)chunk_access.access_type);
   str.AppendF(",\"alloc_tid\":%zu", alloc_tid);
   str.AppendF(",\"alloc_stack_id\":%u", alloc_stack_id);
+
+  // Add allocation stack trace
+  StackTrace alloc_stack = GetStackTraceFromId(alloc_stack_id);
+  str.Append(",\"alloc_stack\":");
+  alloc_stack.PrintJSON(&str);
+
   if (free_tid != kInvalidTid) {
     str.AppendF(",\"free_tid\":%zu", free_tid);
     str.AppendF(",\"free_stack_id\":%u", free_stack_id);
+
+    // Add free stack trace
+    StackTrace free_stack = GetStackTraceFromId(free_stack_id);
+    str.Append(",\"free_stack\":");
+    free_stack.PrintJSON(&str);
   }
 
   str.AppendF("}");
