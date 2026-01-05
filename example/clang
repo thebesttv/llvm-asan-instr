@@ -1,0 +1,5 @@
+ROOT="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+
+ninja -C "$ROOT/../build-release/" && \
+    "$ROOT/../build-release/bin/clang" \
+        "$@"
