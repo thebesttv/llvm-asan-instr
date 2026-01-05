@@ -552,9 +552,10 @@ void NOINLINE __asan_set_error_report_callback(void (*callback)(const char*)) {
   error_report_callback = callback;
 }
 
-void __asan_describe_address(uptr addr) {
+void __asan_describe_address(uptr addr, u32 id) {
   // Thread registry must be locked while we're describing an address.
   asanThreadRegistry().Lock();
+  Printf("ID: %u\n", id);
   PrintAddressDescription(addr, 1, "");
   asanThreadRegistry().Unlock();
 }
