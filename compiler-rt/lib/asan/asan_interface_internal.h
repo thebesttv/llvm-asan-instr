@@ -140,7 +140,7 @@ extern "C" {
   uptr __asan_region_is_poisoned(uptr beg, uptr size);
 
   SANITIZER_INTERFACE_ATTRIBUTE
-  void __asan_describe_address(uptr addr, u32 id);
+  void __asan_describe_address(uptr addr, u64 id);
 
   SANITIZER_INTERFACE_ATTRIBUTE
   int __asan_report_present();

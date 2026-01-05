@@ -111,8 +111,8 @@ void *SANITIZER_CDECL __asan_region_is_poisoned(void *beg, size_t size);
 /// Prints the description of <c><i>addr</i></c>.
 ///
 /// \param addr Address to describe.
-/// \param id Identifier to print along with the address description.
-void SANITIZER_CDECL __asan_describe_address(void *addr, uint32_t id);
+/// \param id Identifier (64-bit) to print along with the address description.
+void SANITIZER_CDECL __asan_describe_address(void *addr, uint64_t id);
 
 /// Checks if an error has been or is being reported (useful for calling from
 /// the debugger to get information about an ASan error).

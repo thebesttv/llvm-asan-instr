@@ -295,7 +295,7 @@ static NOINLINE void force_interface_symbols() {
     case 36: __asan_poison_stack_memory(0, 0); break;
     case 37: __asan_unpoison_stack_memory(0, 0); break;
     case 38: __asan_region_is_poisoned(0, 0); break;
-    case 39: __asan_describe_address(0, 0); break;
+    case 39: __asan_describe_address(0, (u64)0); break;
     case 40: __asan_set_shadow_00(0, 0); break;
     case 41: __asan_set_shadow_01(0, 0); break;
     case 42: __asan_set_shadow_02(0, 0); break;
