@@ -324,6 +324,11 @@ void ShadowAddressDescription::Print() const {
          ShadowNames[kind]);
 }
 
+void ShadowAddressDescription::PrintJSON(u64 id) const {
+  // TODO: implement JSON output. Placeholder for now.
+  (void)id;
+}
+
 void GlobalAddressDescription::Print(const char *bug_type) const {
   for (int i = 0; i < size; i++) {
     DescribeAddressRelativeToGlobal(addr, access_size, globals[i]);
@@ -334,6 +339,12 @@ void GlobalAddressDescription::Print(const char *bug_type) const {
       StackDepotGet(reg_sites[i]).Print();
     }
   }
+}
+
+void GlobalAddressDescription::PrintJSON(u64 id, const char* bug_type) const {
+  // TODO: implement JSON output. Placeholder for now.
+  (void)id;
+  (void)bug_type;
 }
 
 bool GlobalAddressDescription::PointsInsideTheSameVariable(
@@ -411,6 +422,11 @@ void StackAddressDescription::Print() const {
   DescribeThread(GetThreadContextByTidLocked(tid));
 }
 
+void StackAddressDescription::PrintJSON(u64 id) const {
+  // TODO: implement JSON output. Placeholder for now.
+  (void)id;
+}
+
 void HeapAddressDescription::Print() const {
   PrintHeapChunkAccess(addr, chunk_access);
 
@@ -436,6 +452,11 @@ void HeapAddressDescription::Print() const {
   DescribeThread(GetCurrentThread());
   if (free_thread) DescribeThread(free_thread);
   DescribeThread(alloc_thread);
+}
+
+void HeapAddressDescription::PrintJSON(u64 id) const {
+  // TODO: implement JSON output. Placeholder for now.
+  (void)id;
 }
 
 AddressDescription::AddressDescription(uptr addr, uptr access_size,
@@ -481,29 +502,33 @@ void WildAddressDescription::Print() const {
          (void *)addr, (void *)access_size);
 }
 
-void PrintAddressDescription(uptr addr, uptr access_size,
-                             const char *bug_type) {
+void PrintAddressDescription(uptr addr, u64 id, uptr access_size,
+                             const char* bug_type) {
   ShadowAddressDescription shadow_descr;
   if (GetShadowAddressInformation(addr, &shadow_descr)) {
     shadow_descr.Print();
+    shadow_descr.PrintJSON(id);
     return;
   }
 
   GlobalAddressDescription global_descr;
   if (GetGlobalAddressInformation(addr, access_size, &global_descr)) {
     global_descr.Print(bug_type);
+    global_descr.PrintJSON(id, bug_type);
     return;
   }
 
   StackAddressDescription stack_descr;
   if (GetStackAddressInformation(addr, access_size, &stack_descr)) {
     stack_descr.Print();
+    stack_descr.PrintJSON(id);
     return;
   }
 
   HeapAddressDescription heap_descr;
   if (GetHeapAddressInformation(addr, access_size, &heap_descr)) {
     heap_descr.Print();
+    heap_descr.PrintJSON(id);
     return;
   }
 

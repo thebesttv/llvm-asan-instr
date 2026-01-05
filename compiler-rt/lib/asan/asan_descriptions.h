@@ -93,6 +93,8 @@ struct ShadowAddressDescription {
   u8 shadow_byte;
 
   void Print() const;
+  // JSON-formatted print variant. 'id' must be provided by callers.
+  void PrintJSON(u64 id) const;
 };
 
 bool GetShadowAddressInformation(uptr addr, ShadowAddressDescription *descr);
@@ -124,6 +126,7 @@ struct HeapAddressDescription {
   ChunkAccess chunk_access;
 
   void Print() const;
+  void PrintJSON(u64 id) const;
 };
 
 bool GetHeapAddressInformation(uptr addr, uptr access_size,
@@ -139,6 +142,7 @@ struct StackAddressDescription {
   const char *frame_descr;
 
   void Print() const;
+  void PrintJSON(u64 id) const;
 };
 
 bool GetStackAddressInformation(uptr addr, uptr access_size,
@@ -161,6 +165,8 @@ struct GlobalAddressDescription {
   u8 size;
 
   void Print(const char *bug_type = "") const;
+  // JSON-formatted print variant. 'id' must be provided by callers.
+  void PrintJSON(u64 id, const char* bug_type = nullptr) const;
 
   // Returns true when this descriptions points inside the same global variable
   // as other. Descriptions can have different address within the variable
@@ -179,8 +185,9 @@ bool DescribeAddressIfGlobal(uptr addr, uptr access_size, const char *bug_type);
 // addresses. Defaults to 1.
 // Each of the *AddressDescription functions has its own Print() member, which
 // may take access_size and bug_type parameters if needed.
-void PrintAddressDescription(uptr addr, uptr access_size = 1,
-                             const char *bug_type = "");
+// Note: 'id' parameter is required and must be provided by callers.
+void PrintAddressDescription(uptr addr, u64 id, uptr access_size = 1,
+                             const char* bug_type = "");
 
 enum AddressKind {
   kAddressKindWild,

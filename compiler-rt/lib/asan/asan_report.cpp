@@ -556,7 +556,7 @@ void __asan_describe_address(uptr addr, u64 id) {
   // Thread registry must be locked while we're describing an address.
   asanThreadRegistry().Lock();
   Printf("ID: %llu\n", (unsigned long long)id);
-  PrintAddressDescription(addr, 1, "");
+  PrintAddressDescription(addr, id, 1, "");
   asanThreadRegistry().Unlock();
 }
 
