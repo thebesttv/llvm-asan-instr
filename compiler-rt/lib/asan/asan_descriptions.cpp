@@ -701,8 +701,6 @@ void WildAddressDescription::Print() const {
 
 void PrintAddressDescription(uptr addr, u64 id, uptr access_size,
                              const char* bug_type) {
-  Printf("ID: %llu\n", (unsigned long long)id);
-
   ShadowAddressDescription shadow_descr;
   if (GetShadowAddressInformation(addr, &shadow_descr)) {
     shadow_descr.Print();
