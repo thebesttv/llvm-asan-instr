@@ -7,7 +7,7 @@ cmake -G Ninja \
       -DLLVM_ENABLE_RUNTIMES="compiler-rt" \
       -DCMAKE_BUILD_TYPE=Release \
       -DLLVM_TARGETS_TO_BUILD="Native" \
-      -DCMAKE_INSTALL_PREFIX=/usr \
+      -DCMAKE_INSTALL_PREFIX=/llvm-asan-instr \
       ${@} \
       ../llvm
 

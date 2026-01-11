@@ -1,0 +1,21 @@
+# .dockerignore
+
+# 忽略构建目录
+build-release/
+out/
+
+# 忽略 Git 版本控制文件
+.git/
+
+# 忽略 IDE 配置文件
+.vscode/
+.idea/
+.vs/
+
+# 忽略临时文件
+*.tmp
+*.log
+*.swp
+__pycache__/
+
+# 如果你有其他不想拷进去的大文件，加在这里
