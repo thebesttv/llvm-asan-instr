@@ -1,4 +1,3 @@
-When performing a code review, pay close attention to code modifying a function's
-control flow. Could the change result in the corruption of performance profile
-data? Could the change result in invalid debug information, in particular for
-branches and calls?
+使用 ninja -C ./build-release 来测试能否成功编译。
+
+最后的回复尽量使用中文，除了术语。
