@@ -341,7 +341,8 @@ void ShadowAddressDescription::Print() const {
          ShadowNames[kind]);
 }
 
-void ShadowAddressDescription::PrintJSON(u64 id) const {
+void ShadowAddressDescription::PrintJSON(
+    u64 id, BufferedStackTrace* current_stack) const {
   InternalScopedString str;
   const char* kind_str = "unknown";
   switch (kind) {
@@ -364,6 +365,12 @@ void ShadowAddressDescription::PrintJSON(u64 id) const {
   if (kind != kShadowKindGap)
     str.AppendF(",\"shadow_byte\":\"0x%02x\"", shadow_byte);
 
+  // Add current stack trace
+  if (current_stack) {
+    str.Append(",\"current_stack\":");
+    current_stack->PrintJSON(&str);
+  }
+
   str.AppendF("}");
   Printf("%s\n", str.data());
 }
@@ -380,7 +387,8 @@ void GlobalAddressDescription::Print(const char* bug_type) const {
   }
 }
 
-void GlobalAddressDescription::PrintJSON(u64 id, const char* bug_type) const {
+void GlobalAddressDescription::PrintJSON(
+    u64 id, const char* bug_type, BufferedStackTrace* current_stack) const {
   InternalScopedString str;
 
   // Top-level fields: id, addr (the queried address), type and globals array
@@ -427,8 +435,17 @@ void GlobalAddressDescription::PrintJSON(u64 id, const char* bug_type) const {
     str.AppendF("}");
   }
 
-  // Close globals array and top-level object.
-  str.AppendF("]}");
+  // Close globals array.
+  str.AppendF("]");
+
+  // Add current stack trace
+  if (current_stack) {
+    str.Append(",\"current_stack\":");
+    current_stack->PrintJSON(&str);
+  }
+
+  // Final closing brace for the entire object.
+  str.AppendF("}");
   Printf("%s\n", str.data());
 }
 
@@ -454,7 +471,7 @@ bool GlobalAddressDescription::PointsInsideTheSameVariable(
 void StackAddressDescription::Print() const {
   Decorator d;
   Printf("%s", d.Location());
-  Printf("Address %p is located in stack of thread %s", (void *)addr,
+  Printf("Address %p is located in stack of thread %s", (void*)addr,
          AsanThreadIdAndName(tid).c_str());
 
   if (!frame_descr) {
@@ -506,7 +523,8 @@ void StackAddressDescription::Print() const {
   DescribeThread(GetThreadContextByTidLocked(tid));
 }
 
-void StackAddressDescription::PrintJSON(u64 id) const {
+void StackAddressDescription::PrintJSON(
+    u64 id, BufferedStackTrace* current_stack) const {
   InternalScopedString str;
 
   SetJsonHeader(&str, id, addr, "stack");
@@ -592,6 +610,12 @@ void StackAddressDescription::PrintJSON(u64 id) const {
     }
   }
 
+  // Add current stack trace
+  if (current_stack) {
+    str.Append(",\"current_stack\":");
+    current_stack->PrintJSON(&str);
+  }
+
   str.AppendF("}");
   Printf("%s\n", str.data());
 }
@@ -624,7 +648,8 @@ void HeapAddressDescription::Print() const {
   DescribeThread(alloc_thread);
 }
 
-void HeapAddressDescription::PrintJSON(u64 id) const {
+void HeapAddressDescription::PrintJSON(
+    u64 id, BufferedStackTrace* current_stack) const {
   InternalScopedString str;
 
   SetJsonHeader(&str, id, addr, "heap");
@@ -650,6 +675,12 @@ void HeapAddressDescription::PrintJSON(u64 id) const {
     StackTrace free_stack = GetStackTraceFromId(free_stack_id);
     str.Append(",\"free_stack\":");
     free_stack.PrintJSON(&str);
+  }
+
+  // Add current stack trace
+  if (current_stack) {
+    str.Append(",\"current_stack\":");
+    current_stack->PrintJSON(&str);
   }
 
   str.AppendF("}");
@@ -700,32 +731,33 @@ void WildAddressDescription::Print() const {
 }
 
 void PrintAddressDescription(uptr addr, u64 id, uptr access_size,
-                             const char* bug_type) {
+                             const char* bug_type,
+                             BufferedStackTrace* current_stack) {
   ShadowAddressDescription shadow_descr;
   if (GetShadowAddressInformation(addr, &shadow_descr)) {
     shadow_descr.Print();
-    shadow_descr.PrintJSON(id);
+    shadow_descr.PrintJSON(id, current_stack);
     return;
   }
 
   GlobalAddressDescription global_descr;
   if (GetGlobalAddressInformation(addr, access_size, &global_descr)) {
     global_descr.Print(bug_type);
-    global_descr.PrintJSON(id, bug_type);
+    global_descr.PrintJSON(id, bug_type, current_stack);
     return;
   }
 
   StackAddressDescription stack_descr;
   if (GetStackAddressInformation(addr, access_size, &stack_descr)) {
     stack_descr.Print();
-    stack_descr.PrintJSON(id);
+    stack_descr.PrintJSON(id, current_stack);
     return;
   }
 
   HeapAddressDescription heap_descr;
   if (GetHeapAddressInformation(addr, access_size, &heap_descr)) {
     heap_descr.Print();
-    heap_descr.PrintJSON(id);
+    heap_descr.PrintJSON(id, current_stack);
     return;
   }
 

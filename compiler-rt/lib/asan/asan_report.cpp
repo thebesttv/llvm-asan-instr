@@ -556,9 +556,9 @@ void __asan_describe_address(uptr addr, u64 id) {
   // Thread registry must be locked while we're describing an address.
   asanThreadRegistry().Lock();
   Printf("ID: %llu\n", (unsigned long long)id);
-  // TBT_TODO: 想办法把 stacktrace 保存到 JSON 中
-  PRINT_CURRENT_STACK();
-  PrintAddressDescription(addr, id, 1, "");
+  GET_STACK_TRACE_FATAL_HERE;
+  stack.Print();
+  PrintAddressDescription(addr, id, 1, "", &stack);
   asanThreadRegistry().Unlock();
 }
 
